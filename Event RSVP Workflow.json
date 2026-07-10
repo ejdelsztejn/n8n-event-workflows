@@ -1,0 +1,682 @@
+{
+  "name": "Event RSVP Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "RSVP",
+        "formDescription": "RSVP here to the event",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Phone number"
+            },
+            {
+              "fieldLabel": "Number of attendees",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Are you a member?",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Dietary needs or allergies"
+            },
+            {
+              "fieldLabel": "Questions?"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4363f17e-c50f-41b5-aa1a-c7af321b2831",
+      "name": "On form submission",
+      "webhookId": "67a955f5-fb7c-405c-bd29-40ad3a0a16db"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Trim whitespace on all string fields\nconst data = {};\nfor (const [key, value] of Object.entries($json)) {\n  data[key] = typeof value === 'string' ? value.trim() : value;\n}\n\n// Lowercase email address\nconst email = (data.Email ?? '').toLowerCase();\n\n// Coerce attendees to an integer. Default to 1 if missing/zero\nconst attendees = parseInt(data['Number of attendees'], 10) || 1;\n\n// Check that email is likely valid\nconst valid = email.includes('@') && email.includes('.');\n\nconst dietary = data['Dietary needs or allergies']\nconst member = data['Are you a member?']\nconst phone = data['Phone number']\nconst questions = data['Questions?']\n\n// Return normalized record\nreturn {\n  name: data.Name,\n  email,\n  attendees,\n  dietary,\n  member,\n  phone,\n  questions,\n  event_id: 'summer-bbq-2026',\n  timestamp: new Date().toISOString(),\n  valid,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "931f4b4d-b32d-45b4-89d6-e654bf849cad",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "40287ad3-ad0d-41ca-a6e0-b8080fde0f74",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        0
+      ],
+      "id": "40cc09fb-37a9-4125-9dcf-2d2f6a7f1460",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit?gid=248972839#gid=248972839",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 248972839,
+          "mode": "list",
+          "cachedResultName": "RSVPs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit#gid=248972839"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "event_id",
+              "lookupValue": "=event_id = {{ $json.event_id }}"
+            },
+            {
+              "lookupColumn": "status",
+              "lookupValue": "=status = 'confirmed'"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        624,
+        -16
+      ],
+      "id": "76f98fbc-9875-43b5-aa82-86f95b7ac095",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "hro6gjJIlrKVBoGG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const CAPACITY = 50; // hardcoded for v1\n\n// New submission, fetched from Node 2 by node name\nconst rsvp = $('Code in JavaScript').first().json;\n\n// Sum attendees across the sheet rows from Node 4\nconst currentHeadcount = $input.all().reduce(\n  (sum, item) => sum + (Number(item.json.attendees) || 0),\n  0\n);\n\nconst newTotal = currentHeadcount + rsvp.attendees;\n\nreturn [{\n  json: {\n    ...rsvp,\n    current_headcount: currentHeadcount,\n    new_total: newTotal,\n    capacity: CAPACITY,\n    has_room: newTotal <= CAPACITY,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        128
+      ],
+      "id": "89b0d0d3-daff-47d7-b923-8bebc9af6e53",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c448d414-3d6e-415d-90f1-abbb5ee58c4d",
+              "leftValue": "={{ $json.has_room }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        864,
+        128
+      ],
+      "id": "184ffa74-4bef-4925-94a7-6826741046a5",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit?gid=248972839#gid=248972839",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 248972839,
+          "mode": "list",
+          "cachedResultName": "RSVPs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit#gid=248972839"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "confirmed",
+            "timestamp": "={{ $('Code in JavaScript1').item.json.timestamp }}",
+            "event_id": "={{ $('Code in JavaScript1').item.json.event_id }}",
+            "email": "={{ $('Code in JavaScript1').item.json.email }}",
+            "name": "={{ $('Code in JavaScript1').item.json.name }}",
+            "phone": "=",
+            "attendees": "={{ $('Code in JavaScript1').item.json.attendees }}"
+          },
+          "matchingColumns": [
+            "status"
+          ],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attendees",
+              "displayName": "attendees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "member",
+              "displayName": "member",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "dietary",
+              "displayName": "dietary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reminded",
+              "displayName": "reminded",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1072,
+        32
+      ],
+      "id": "12b0ee68-4801-4b14-a8da-23a948dcca8a",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "hro6gjJIlrKVBoGG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code in JavaScript1').item.json.email }}",
+        "subject": "We're Looking Forward to Seeing You at the Event!",
+        "message": "=Hi {{ $('Code in JavaScript1').item.json.name }},  You're confirmed for the Summer BBQ on Sunday, July 26 — we have you down for a party of {{ $('Code in JavaScript1').item.json.attendees }}. Need to change or cancel your RSVP? Just reply to this email.  See you there!",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        -48
+      ],
+      "id": "f71134cd-53ef-4cb5-91ea-34d226826f2b",
+      "name": "Send a message",
+      "webhookId": "b3da82a0-ab50-414c-abf1-2a983e4bf4ea",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "wshszZVu0fWn8ib6",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit?gid=248972839#gid=248972839",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 248972839,
+          "mode": "list",
+          "cachedResultName": "RSVPs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tMCqKGcfM4NurfX8uThIvLX0pdldMAiep5Tzfbyzngo/edit#gid=248972839"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "waitlist",
+            "timestamp": "={{ $json.timestamp }}",
+            "event_id": "={{ $json.event_id }}",
+            "email": "={{ $json.email }}",
+            "name": "={{ $json.name }}",
+            "attendees": "={{ $json.attendees }}"
+          },
+          "matchingColumns": [
+            "status"
+          ],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attendees",
+              "displayName": "attendees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "member",
+              "displayName": "member",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "dietary",
+              "displayName": "dietary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reminded",
+              "displayName": "reminded",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1072,
+        224
+      ],
+      "id": "a5e63787-376b-41ef-ad54-b7c90f5d963d",
+      "name": "Append or update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "hro6gjJIlrKVBoGG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4bbe82ae-30ed-4330-9637-1220c4245fce",
+              "leftValue": "={{ $('Code in JavaScript1').item.json.dietary }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        176
+      ],
+      "id": "981168b6-b1ac-4290-8cec-43bba3a1f8b7",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "sendTo": "jessye.ejdelman@gmail.com",
+        "subject": "Important: Dietary Needs for Summer BBA 2026",
+        "message": "=Hi Katie Caterer,\n\nOne of our attendees, {{ $('Code in JavaScript1').item.json.name }}, just RSVP'd that someone in their party has specific dietary needs: {{ $('Code in JavaScript1').item.json.dietary }}.\n\nPlease let me know if you have any issues with this requested accomodation.\n\nThank you!",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1552,
+        80
+      ],
+      "id": "9f6a619d-5ba0-48a0-a22b-9250286b7748",
+      "name": "Send a message1",
+      "webhookId": "050e2dca-d1db-445d-8973-8380328db706",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "wshszZVu0fWn8ib6",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append or update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "278ddfb8-bd37-4c3d-a40c-fdc66d6f44da",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c2d82285c98a5b4baf9f55230ee864c2f01d95b16584c9f94b60b3e80d736bf9"
+  },
+  "nodeGroups": [],
+  "id": "GLEoIrJEKbsDARjn",
+  "tags": []
+}

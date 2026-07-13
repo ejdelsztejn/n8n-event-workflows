@@ -1,16 +1,17 @@
-Synagogue Event RSVP & Reminder Automation (n8n)
+# Synagogue Event RSVP & Reminder Automation (n8n)
 
 Two production-style n8n workflows automating event RSVP intake and reminder
 delivery for a synagogue community, built as a portfolio project demonstrating
 integration architecture patterns: webhook intake, data validation, capacity
 management, scheduled jobs, external API guards, and idempotent writes.
 
-Workflows
+## Workflows
 
-1. Event RSVP Intake (workflows/rsvp-intake.json)
+### 1. Event RSVP Intake (workflows/rsvp-intake.json)
 
 Trigger: n8n Form (hosted webform) → runs on each submission.
 
+```
 Form Trigger → Code (normalize & validate) → IF (valid?)
                                               ├─ false → Gmail (graceful failure email)
                                               └─ true  → Sheets (read confirmed RSVPs)
@@ -19,22 +20,23 @@ Form Trigger → Code (normalize & validate) → IF (valid?)
                                                             ├─ true  → Sheets (append, status=confirmed)
                                                             │          → Gmail (personalized confirmation)
                                                             └─ false → waitlist path
+```
 
 Key patterns:
 
-Normalize at the boundary — trim/lowercase/coerce all form input in a
+**Normalize at the boundary** — trim/lowercase/coerce all form input in a
 Code node before it touches anything else; validation failures set a
 valid: false flag routed to a friendly email, rather than throwing.
 
-Aggregation vs. per-item execution — capacity math runs once for all
+**Aggregation vs. per-item execution** — capacity math runs once for all
 items (summing the attendees column) while pulling the incoming submission
 via a cross-node reference ($('Code').first().json).
 
-Graceful failure — every automated rejection gives the human a path
+**Graceful failure** — every automated rejection gives the human a path
 (reply-to instructions), and malformed addresses use On Error: Continue
 so one bad row can't kill a run.
 
-2. Daily Reminder Job (workflows/daily-reminders.json)
+### 2. Daily Reminder Job (workflows/daily-reminders.json)
 
 Trigger: Schedule (daily, 11am America/New_York).
 
@@ -45,21 +47,21 @@ Schedule Trigger → HTTP Request (Hebcal Assur Melacha API) → IF (melacha pro
 
 Key patterns:
 
-Calendar-aware guard — the workflow checks Hebcal's issur melacha API
+**Calendar-aware guard** — the workflow checks Hebcal's issur melacha API
 before doing anything, so reminders never send on Shabbat or yom tov.
 Location-sensitive, correct for two-day diaspora chagim.
 
-Timezone-safe date math — "3 days out" computed with n8n's Luxon $now
+**Timezone-safe date math** — "3 days out" computed with n8n's Luxon $now
 in the workflow timezone; naive toISOString() would drift a day after 8pm
 Eastern. Event dates stored as plain-text ISO (YYYY-MM-DD) so string
 comparison is exact and sortable.
 
-Idempotency — sends are fanned out per item, then each row is marked
+**Idempotency** — sends are fanned out per item, then each row is marked
 reminded=yes (Update Row matched on row_number). Running the workflow
 twice sends zero duplicate emails. Ordering is deliberate: send-then-mark
 fails toward a duplicate reminder (harmless) rather than a silent miss.
 
-Failure isolation — Gmail uses the error output so a failed send never
+**Failure isolation** — Gmail uses the error output so a failed send never
 reaches the mark-as-reminded step; unmarked rows retry the next day.
 
 Data model (Google Sheets)
@@ -71,7 +73,7 @@ Events tab: event_id | event_name | event_date | capacity | location
 event_id joins the two tabs; status (confirmed/waitlist) and
 reminded are written exclusively by the workflows.
 
-Lessons learned (real bugs, real fixes)
+**Lessons learned (real bugs, real fixes)**
 
 Silent defaults hide bugs. parseInt(x) || 1 was meant to default blank
 party sizes to 1 — but when a form field label changed, it silently turned
@@ -93,29 +95,19 @@ Test both branches. Guards were verified by forcing the rare case —
 a fixed Shabbat-afternoon timestamp against the Hebcal API, a temporarily
 lowered capacity — rather than waiting for it to occur naturally.
 
-Running it yourself
+**Running it yourself**
 
-Import the JSON files from workflows/ into n8n (Workflow → Import from File).
-
-Create Google Sheets and Gmail OAuth2 credentials (n8n walks you through
-
-the Google Cloud OAuth app setup; add yourself as a test user).
-
-Create a spreadsheet with the two tabs above and point the Sheets nodes at it.
-
-Set the workflow timezone (Workflow Settings) — the reminder job's date
-
-math and schedule depend on it.
-
-Activate. The form's production URL goes live with activation.
+- Import the JSON files from workflows/ into n8n (Workflow → Import from File).
+- Create Google Sheets and Gmail OAuth2 credentials (n8n walks you through the Google Cloud OAuth app setup; add yourself as a test user).
+- Create a spreadsheet with the two tabs above and point the Sheets nodes at it.
+- Set the workflow timezone (Workflow Settings) — the reminder job's date math and schedule depend on it.
+- Activate. The form's production URL goes live with activation.
 
 
+**Notes**
 
-Notes
-
-Hebcal API is free (CC-BY 4.0) — https://www.hebcal.com attribution appreciated.
-
-Workflow JSON exports contain no credential secrets (n8n stores those
+- Hebcal API is free (CC-BY 4.0) — https://www.hebcal.com attribution appreciated.
+- Workflow JSON exports contain no credential secrets (n8n stores those
 separately), but do contain spreadsheet IDs and email copy — sanitize
 before publishing if needed.
 

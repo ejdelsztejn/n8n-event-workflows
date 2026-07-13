@@ -106,8 +106,4 @@ lowered capacity — rather than waiting for it to occur naturally.
 
 **Notes**
 
-- Hebcal API is free (CC-BY 4.0) — https://www.hebcal.com attribution appreciated.
-- Workflow JSON exports contain no credential secrets (n8n stores those
-separately), but do contain spreadsheet IDs and email copy — sanitize
-before publishing if needed.
-
+- Uses Hebcal API is free (CC-BY 4.0)
